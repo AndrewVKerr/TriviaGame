@@ -97,6 +97,7 @@ import tkinter as tk
 from tkinter import messagebox as mb
 from tkinter.scrolledtext import ScrolledText
 import pickle
+import random
 
 class Model(object):
     
@@ -105,7 +106,7 @@ class Model(object):
         self.questions = {}
         self.highscores = {}
         
-        self.categories = ["history","geography","music","games"]
+        self.categories = []
         
         try:
             self.load()
@@ -120,18 +121,20 @@ class Model(object):
         
         self.questions = self.raw_model["questions"]
         self.highscores = self.raw_model["highscores"]
+        for key in self.questions.keys():
+            self.categories.append(key)
         
     def load_defaults(self):
         self.raw_model = {"questions":{},"highscores":{}}
         self.questions = self.raw_model["questions"]
-        for category in self.categories:
+        for category in ["history","geography","music","games"]:
             self.questions[category] = []
         
         self.questions["history"].append(
             Question(category="history",question_text="How much wood can a wood chuck chuck if a wood chuck could chuck wood?",
                      answers=[7,20,"No",None],correct_answer=2)
         )
-        self.highscores = self.raw_model["highscores"]        
+        self.highscores = self.raw_model["highscores"]
     
     def save(self):
         datafile = open("data.pickle","wb")
@@ -147,8 +150,8 @@ class Question(object):
         self.correct_answer = correct_answer
         
     '''Creates a QuestionFrame object using the information stored in this object.'''
-    def prompt_question(self,master=None):
-        master_ = master or tk.Tk()
+    def prompt_question(self,next_question=None,master=None):
+        master_ = master or Window(previous=TriviaGame.GUI.main_menu.master)
         master_.title("Trivia Question ["+self.category+"]")
         frame = QuestionFrame(master_,question=self)
         frame.grid(row=0,column=0,sticky="news")
@@ -160,7 +163,7 @@ class Question(object):
 class Gui(object):
         
     def start(self):
-        self.root = tk.Tk()
+        self.root = Window()
         self.root.title("TriviaGame")
         self.root.geometry("300x200")
         
@@ -173,7 +176,9 @@ class Gui(object):
         self.root.mainloop()
     
 
-'''A class that extends tk.Tk, used to override the destroy command so that the window is withdrawn instead of destroyed. When the window withdraws the previous window
+'''
+ Window(tk.Tk)
+ A class that extends tk.Tk, used to override the destroy command so that the window is withdrawn instead of destroyed. When the window withdraws the previous window
  will be brought back.'''
 class Window(tk.Tk):
     
@@ -182,6 +187,8 @@ class Window(tk.Tk):
         self.previous = previous
         
     def destroy(self):
+        if self.previous == None:
+            exit()
         self.previous.update()
         self.previous.deiconify()
         self.withdraw()
@@ -253,21 +260,36 @@ class CategorySelectionFrame(tk.Frame):
         self.dbx_category_selection = tk.OptionMenu(self,self.tkvar_selected_category,*TriviaGame.MODEL.categories)
         self.dbx_category_selection.grid(row=2,column=1,sticky="ews")
         
-        self.btn_select = tk.Button(self,text="Select",command=self.select)
-        self.btn_select.grid(row=3,column=1,sticky="ews")
+        self.ent_amount = tk.Entry(self)
+        self.ent_amount.insert(tk.END,"10")
+        self.ent_amount.grid(row=3,column=1,sticky="ews")
         
-        self.grid_rowconfigure(4,weight=1)
+        self.btn_select = tk.Button(self,text="Select",command=self.select)
+        self.btn_select.grid(row=4,column=1,sticky="ews")
+        
+        self.grid_rowconfigure(5,weight=1)
         
     def select(self):
         self.master.withdraw()
-        questions = TriviaGame.MODEL.questions
+        questions_dict = TriviaGame.MODEL.questions
         selection = self.tkvar_selected_category.get()
-        if selection in questions:
-            for question in questions[selection]:
-                question.prompt_question()
-        else:
-            mb.showerror(title="Invalid Category!",message="Category ["+selection+"] is not stored in dictionary.")
-            self.master.destroy()
+        
+        questions_list = questions_dict[selection]
+        
+        game = TriviaGame.GAME
+        game.correct_questions = 0
+        try:
+            size = int(self.ent_amount.get())
+        except:
+            size = 10
+        
+        if size > len(questions_list):
+            size = len(questions_list)
+        
+        game.total_questions = size
+        
+        game.queued_questions = random.choices(questions_list,k=size)
+        game.next_question().prompt_question()
         
 
 class QuestionFrame(tk.Frame):
@@ -292,9 +314,9 @@ class QuestionFrame(tk.Frame):
         
         r = 3
         for answer in self.answers:
-            rad_answer = tk.Radiobutton(self,variable=self.tkvar_chosen_answer,value=answer,text=str(answer))
+            rad_answer = tk.Radiobutton(self,variable=self.tkvar_chosen_answer,value=str(answer),text=str(answer))
             rad_answer.grid(row=r,column=1,sticky="nws")
-            self.rad_answers_dictionary[answer] = rad_answer
+            self.rad_answers_dictionary[str(answer)] = rad_answer
             r+=1
             
         self.grid_rowconfigure(r,weight=1)
@@ -302,6 +324,9 @@ class QuestionFrame(tk.Frame):
         r+=1
         self.btn_quit = tk.Button(self,text="Quit",command=self.exit_quiz)
         self.btn_quit.grid(row=r,column=0,sticky="news")
+        
+        self.lbl_response = tk.Label(self,text="")
+        self.lbl_response.grid(row=r,column=1,sticky="ews")        
         
         self.btn_select = tk.Button(self,text="Select",command=self.select_answer)
         self.btn_select.grid(row=r,column=2,sticky="news")
@@ -314,14 +339,76 @@ class QuestionFrame(tk.Frame):
         self.grid_columnconfigure(2,weight=1)
         
     def exit_quiz(self):
-        print("Exit")
+        if TriviaGame.GAME.end_game():
+            self.master.destroy()
     
     def select_answer(self):
-        print("Answer:",self.tkvar_chosen_answer.get())
+        answer = self.tkvar_chosen_answer.get()
+        if answer == '':
+            answer = "None"
+        
+        correct = self.answers[self.correct_answer]
+        if answer == correct:
+            rad_selected = self.rad_answers_dictionary[answer]
+            rad_selected.configure(bg="green")
+            self.lbl_response.configure(text="Correct",fg="green")
+            TriviaGame.GAME.correct_questions += 1
+        else:
+            rad_selected = self.rad_answers_dictionary[answer]
+            rad_selected.configure(bg="red")
+            rad_correct = self.rad_answers_dictionary[correct]
+            rad_correct.configure(bg="green")  
+            self.lbl_response.configure(text="Wrong Answer",fg="red")
+            
+        self.btn_select.configure(text="Next Question",command=self.next_question)
+    
+    def next_question(self):
+        game = TriviaGame.GAME
+        #Get next question, if not found then end the game.
+        next_question = game.next_question()
+        if next_question != None:
+            next_question.prompt_answer()
+        else:
+            game.end_game()
+        tk.Tk.destroy(self.master)
+    
+'''
+ Game(object)
+ Keeps track of the currently running game.
+ Seperated from the model as this data will not be stored.
+ Seperated from the gui as this doesnt display anything to the user.
+'''        
+class Game(object):
+    
+    def __init__(self):
+        self.correct_questions = 0
+        self.total_questions = 0
+        self.queued_questions = []
+        self.current_question = None
+        
+    def next_question(self):
+        if len(self.queued_questions) == 0:
+            self.current_question = None
+            return None
+        
+        question = self.queued_questions.pop(0)
+        self.current_question = question
+        return question
+    
+    def end_game(self):
+        if self.current_question != None:
+            answer = mb.askyesno(title="Quit Quiz?",message="There are still questions left, are you sure you wish to quit?")
+            if answer == False:
+                return False
+        else:
+            print("Score:",(self.correct_questions/self.total_questions)*100)
+            pass # Show Score Board
+        return True
         
 class TriviaGame(object):
     MODEL=Model()
     GUI=Gui()
+    GAME=Game()
         
 #main
 if __name__ == "__main__":
