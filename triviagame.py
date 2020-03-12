@@ -414,12 +414,12 @@ class ScoreFrame(tk.Frame):
         
         self.tkvar_name = tk.StringVar(self)
         
-        def limit_length_to_2(*args):
+        def limit_length_to_3(*args):
             value = self.tkvar_name.get()
             if len(value) > 3:
                 self.tkvar_name.set(value[:3])
         
-        self.tkvar_name.trace('w', limit_length_to_2)
+        self.tkvar_name.trace('w', limit_length_to_3)
         
         self.ent_name = tk.Entry(self,textvariable=self.tkvar_name,width=5)
         self.ent_name.grid(row=4,column=1,sticky="n")
