@@ -134,6 +134,11 @@ class Model(object):
             Question(category="history",question_text="How much wood can a wood chuck chuck if a wood chuck could chuck wood?",
                      answers=[7,20,"No",None],correct_answer=2)
         )
+        
+        self.questions["geography"].append(
+            Question(category="geography",question_text="Where is Missouri?",
+                     answers=["Im in misery.","Below Kansas", "Florida", "West Virginia"],correct_answer=1)
+        )        
         self.highscores = self.raw_model["highscores"]
     
     def save(self):
@@ -289,7 +294,11 @@ class CategorySelectionFrame(tk.Frame):
         game.total_questions = size
         
         game.queued_questions = random.choices(questions_list,k=size)
-        game.next_question().prompt_question()
+        question = game.next_question()
+        if question == None:
+            game.end_game()
+        else:
+            question.prompt_question()
         
 
 class QuestionFrame(tk.Frame):
@@ -372,12 +381,75 @@ class QuestionFrame(tk.Frame):
             game.end_game()
         tk.Tk.destroy(self.master)
     
-'''
+
+class ScoreFrame(tk.Frame):
+    
+    def __init__(self,master=None):
+        tk.Frame.__init__(self,master)
+        
+        self.grid_columnconfigure(0,weight=1)
+        self.grid_columnconfigure(1,weight=1)
+        self.grid_columnconfigure(2,weight=1)
+        
+        self.grid_rowconfigure(0,weight=1)
+        
+        try:
+            self.score = (TriviaGame.GAME.correct_questions/TriviaGame.GAME.total_questions)*100.0
+        except ZeroDivisionError:
+            self.score = 100.0
+        
+        msg = ""
+        if self.score >= 100:
+            msg = "You scored a perfect [100%]!"
+        else:
+            msg = "You scored a ["+str(self.score)+"%]"
+        
+        self.lbl_title = tk.Label(self,text=msg)
+        self.lbl_title.grid(row = 1, column = 0, columnspan = 3, sticky="news")
+        
+        self.grid_rowconfigure(2,weight=1)
+        
+        self.lbl_enter_initials = tk.Label(self,text="Enter Initials:")
+        self.lbl_enter_initials.grid(row=3,column=1,sticky="s")
+        
+        self.tkvar_name = tk.StringVar(self)
+        
+        def limit_length_to_2(*args):
+            value = self.tkvar_name.get()
+            if len(value) > 3:
+                self.tkvar_name.set(value[:3])
+        
+        self.tkvar_name.trace('w', limit_length_to_2)
+        
+        self.ent_name = tk.Entry(self,textvariable=self.tkvar_name,width=5)
+        self.ent_name.grid(row=4,column=1,sticky="n")
+        
+        self.grid_rowconfigure(5,weight=1)
+        
+        self.btn_main_menu = tk.Button(self,text="MainMenu",command=self.goto_mainmenu)
+        self.btn_main_menu.grid(row=6,column=1,sticky="news")
+        
+    def goto_mainmenu(self):    
+        self.master.destroy()
+        
+    def show_score(master=None):
+        root = master or Window(previous=TriviaGame.GUI.root)
+        root.title("You scored...")
+        root.geometry("300x200")
+        
+        frame = ScoreFrame(master=root)
+        frame.grid(row=0,column=0,sticky="news")
+        
+        root.grid_columnconfigure(0,weight=1)
+        root.grid_rowconfigure(0,weight=1)
+        return frame
+
+"""
  Game(object)
  Keeps track of the currently running game.
  Seperated from the model as this data will not be stored.
  Seperated from the gui as this doesnt display anything to the user.
-'''        
+"""        
 class Game(object):
     
     def __init__(self):
@@ -401,8 +473,7 @@ class Game(object):
             if answer == False:
                 return False
         else:
-            print("Score:",(self.correct_questions/self.total_questions)*100)
-            pass # Show Score Board
+            ScoreFrame.show_score()
         return True
         
 class TriviaGame(object):
