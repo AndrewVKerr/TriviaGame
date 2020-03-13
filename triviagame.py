@@ -93,20 +93,32 @@ The model for this game will be stored in a dictionary format.
   |--> 6, weight = 1
 '''
 
+#===[ Imports ]==================================================================================[ Imports ]===============================================================================
 import tkinter as tk
 from tkinter import messagebox as mb
 from tkinter.scrolledtext import ScrolledText
 import pickle
 import random
 
+#===[ Classes ]==================================================================================[ Classes ]===============================================================================
 class Model(object):
+    """
+    This class is used to store any data that needs to persist between sessions, all object variables (if multiple) must be stored/retrieved
+    within/from the given raw_model object variable for it to persist between sessions.
+    """
     
     def __init__(self):
-        self.raw_model = {}
-        self.questions = {}
-        self.highscores = {}
+        """
+        The '__init__' method creates a new 'Model' object.
+        This will generate a raw_model and categories object variables that will be set to empty dictionaries.
+        Will attempt to call self.load(), if that fails then will call self.load_defaults() before calling self.save() to rebuild the pickle file.
+        """
         
-        self.categories = []
+        self.raw_model = {}
+        """The raw model data. This will be dumped/loaded to/from a pickle file so that it persists through sessions."""
+        
+        self.categories = {}
+        """The categories stored in the raw_model variable. Contains every category stored with their name obj variable as their key."""
         
         try:
             self.load()
@@ -115,49 +127,103 @@ class Model(object):
             self.save()
         
     def load(self):
+        """
+        The 'load' method loads in the raw_model from the pickle file. Will map the categories obj variable to the dictionary stored in the loaded raw_model.
+        """
+        
         datafile = open("data.pickle","rb")
         self.raw_model = pickle.load(datafile)
         datafile.close()
         
-        self.questions = self.raw_model["questions"]
-        self.highscores = self.raw_model["highscores"]
-        for key in self.questions.keys():
-            self.categories.append(key)
+        self.categories = self.raw_model["categories"]
         
     def load_defaults(self):
-        self.raw_model = {"questions":{},"highscores":{}}
-        self.questions = self.raw_model["questions"]
-        for category in ["history","geography","music","games"]:
-            self.questions[category] = []
+        """
+        The 'load_defaults' method will load in a generic version of the 'raw_model' into memory. Will map the 'categories' obj variable to the dictionary stored in the generated 'raw_model'.
+        This should run whenever the 'load' method has failed to execute so that a template can be loaded into memory.
+        """
         
-        self.questions["history"].append(
-            Question(category="history",question_text="How much wood can a wood chuck chuck if a wood chuck could chuck wood?",
+        self.raw_model = {"categories":{}}
+        self.categories = self.raw_model["categories"]
+        for category in ["history","geography","music","games"]:
+            self.categories[category] = Category(name=category)
+        
+        self.categories["history"].add_question(question=
+            Question(question_text="How much wood can a wood chuck chuck if a wood chuck could chuck wood?",
                      answers=[7,20,"No",None],correct_answer=2)
         )
         
-        self.questions["geography"].append(
-            Question(category="geography",question_text="Where is Missouri?",
+        self.categories["geography"].add_question(
+            Question(question_text="Where is Missouri?",
                      answers=["Im in misery.","Below Kansas", "Florida", "West Virginia"],correct_answer=1)
-        )        
-        self.highscores = self.raw_model["highscores"]
+        )
     
     def save(self):
+        """
+        The 'save' method will take the 'raw_model' object stored in memory and will dump it into a pickle file.
+        """
         datafile = open("data.pickle","wb")
         pickle.dump(self.raw_model,datafile)
         datafile.close()        
+
+    def get_category_names(self):
+        """
+        The 'get_category_names' method will return the keys of the 'categories' obj variable in a list format.
+        """
+        return list(self.categories.keys())
+
+
+class Category(object):
+    """
+    The 'Category' class extends the 'object' class. This class is responsible for storing the 'name', 'questions' and 'highscores' associated with this specific category. 
+    """
+
+    def __init__(self,name="UNSET"):
+        """
+        The '__init__' method for this class sets the 'name' of the category to the one provided, as well as set 'questions' and 'highscores' to blank lists.
+        """
+        
+        self.name = name
+        """The name for this specific category. Used by the 'Model.categories' dictionary as the key used to store these categories."""
+        
+        self.questions = []
+        """A 'list' of 'Question's for this category."""
+        
+        self.highscores = []
+        """A 'list' of 'HighScore's for this category."""
+        
+    def add_question(self,question):
+        question.category=self
+        self.questions.append(question)
+        
+    def add_highscore(self,highscore):
+        for key in range(len(self.highscores)):
+            hscore = self.highscores[key]
+            if hscore.score < highscore.score:
+                self.highscores.append(key,highscore)
+                break
+        if len(self.highscores) > 10:
+            self.highscores.pop()
+
+class HighScore(object):
+    
+    def __init__(self,score,category):
+        self.score = 0
+        self.category = ""
+    
         
 class Question(object):
     
-    def __init__(self,category="UNSET",question_text="UNSET",answers=[None],correct_answer=0):
-        self.category=category
+    def __init__(self,question_text="UNSET",answers=[None],correct_answer=0):
+        self.category="UNSET"
         self.question_text = question_text
         self.answers = answers
         self.correct_answer = correct_answer
         
     '''Creates a QuestionFrame object using the information stored in this object.'''
     def prompt_question(self,next_question=None,master=None):
-        master_ = master or Window(previous=TriviaGame.GUI.main_menu.master)
-        master_.title("Trivia Question ["+self.category+"]")
+        master_ = master or Window(previous=TriviaGame.GUI.main_menu.master,destroy=True)
+        master_.title("Trivia Question ["+self.category.name+"]")
         frame = QuestionFrame(master_,question=self)
         frame.grid(row=0,column=0,sticky="news")
         master_.grid_columnconfigure(0,weight=1)
@@ -187,16 +253,20 @@ class Gui(object):
  will be brought back.'''
 class Window(tk.Tk):
     
-    def __init__(self,previous=None,*args,**kwargs):
+    def __init__(self,previous=None,destroy=False,*args,**kwargs):
         tk.Tk.__init__(self,*args,**kwargs)
         self.previous = previous
+        self.should_destroy = destroy
         
     def destroy(self):
         if self.previous == None:
             exit()
         self.previous.update()
         self.previous.deiconify()
-        self.withdraw()
+        if self.should_destroy:
+            tk.Tk.destroy(self)
+        else:
+            self.withdraw()
     
 class MainMenu(tk.Frame):
     
@@ -259,10 +329,12 @@ class CategorySelectionFrame(tk.Frame):
         self.lbl_title = tk.Label(self,text="Select a Category:")
         self.lbl_title.grid(row=1,column=0,columnspan=3,sticky="news")
         
-        self.tkvar_selected_category = tk.StringVar(self)
-        self.tkvar_selected_category.set(TriviaGame.MODEL.categories[0])
+        category_names = TriviaGame.MODEL.get_category_names()
         
-        self.dbx_category_selection = tk.OptionMenu(self,self.tkvar_selected_category,*TriviaGame.MODEL.categories)
+        self.tkvar_selected_category = tk.StringVar(self)
+        self.tkvar_selected_category.set(category_names[0])
+        
+        self.dbx_category_selection = tk.OptionMenu(self,self.tkvar_selected_category,*category_names)
         self.dbx_category_selection.grid(row=2,column=1,sticky="ews")
         
         self.ent_amount = tk.Entry(self)
@@ -276,10 +348,9 @@ class CategorySelectionFrame(tk.Frame):
         
     def select(self):
         self.master.withdraw()
-        questions_dict = TriviaGame.MODEL.questions
         selection = self.tkvar_selected_category.get()
         
-        questions_list = questions_dict[selection]
+        category = TriviaGame.MODEL.categories[selection]
         
         game = TriviaGame.GAME
         game.correct_questions = 0
@@ -288,12 +359,12 @@ class CategorySelectionFrame(tk.Frame):
         except:
             size = 10
         
-        if size > len(questions_list):
-            size = len(questions_list)
+        if size > len(category.questions):
+            size = len(category.questions)
         
         game.total_questions = size
         
-        game.queued_questions = random.choices(questions_list,k=size)
+        game.queued_questions = random.choices(category.questions,k=size)
         question = game.next_question()
         if question == None:
             game.end_game()
@@ -407,6 +478,9 @@ class ScoreFrame(tk.Frame):
         self.lbl_title = tk.Label(self,text=msg)
         self.lbl_title.grid(row = 1, column = 0, columnspan = 3, sticky="news")
         
+        self.lbl_placed = tk.Label(self,text="["+"] place")
+        self.lbl_placed.grid(row = 2, column=1, sticky="news")
+        
         self.grid_rowconfigure(2,weight=1)
         
         self.lbl_enter_initials = tk.Label(self,text="Enter Initials:")
@@ -416,8 +490,11 @@ class ScoreFrame(tk.Frame):
         
         def limit_length_to_3(*args):
             value = self.tkvar_name.get()
+            self.btn_main_menu.configure(state="disabled")
             if len(value) > 3:
                 self.tkvar_name.set(value[:3])
+            elif len(value) == 3:
+                self.btn_main_menu.configure(state="normal")
         
         self.tkvar_name.trace('w', limit_length_to_3)
         
@@ -426,14 +503,14 @@ class ScoreFrame(tk.Frame):
         
         self.grid_rowconfigure(5,weight=1)
         
-        self.btn_main_menu = tk.Button(self,text="MainMenu",command=self.goto_mainmenu)
+        self.btn_main_menu = tk.Button(self,text="MainMenu",command=self.goto_mainmenu,state="disabled")
         self.btn_main_menu.grid(row=6,column=1,sticky="news")
         
     def goto_mainmenu(self):    
         self.master.destroy()
         
-    def show_score(master=None):
-        root = master or Window(previous=TriviaGame.GUI.root)
+    def show_score(master=None,previous_frame=None):
+        root = master or Window(previous=previous_frame or TriviaGame.GUI.root,destroy=True)
         root.title("You scored...")
         root.geometry("300x200")
         
@@ -443,6 +520,11 @@ class ScoreFrame(tk.Frame):
         root.grid_columnconfigure(0,weight=1)
         root.grid_rowconfigure(0,weight=1)
         return frame
+
+class HighScoreFrame(tk.Frame):
+    
+    def __init__(self,master=None):
+        pass
 
 """
  Game(object)
